@@ -69,7 +69,6 @@ void Disk::write(int blocknum, const char *data)
 		cout << "ERROR: couldn't access simulated disk\n";
 		abort();
 	}
-	
 }
 
 void Disk::close()
