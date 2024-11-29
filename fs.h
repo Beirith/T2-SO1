@@ -54,6 +54,10 @@ public:
 
 private:
     Disk *disk;
+
+    void inode_load(int inumber, class fs_inode *inode);
+    void inode_save(int inumber, class fs_inode *inode);
+    void inode_format(class fs_inode *inode);
 };
 
 #endif
