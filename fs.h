@@ -1,6 +1,7 @@
 #ifndef FS_H
 #define FS_H
 
+#include <vector>
 #include "disk.h"
 
 class INE5412_FS
@@ -10,6 +11,11 @@ public:
     static const unsigned short int INODES_PER_BLOCK = 128;
     static const unsigned short int POINTERS_PER_INODE = 5;
     static const unsigned short int POINTERS_PER_BLOCK = 1024;
+
+    class fs_bitmap {
+        public:
+            std::vector<bool> free_blocks;
+    };
 
     class fs_superblock {
         public:
@@ -54,10 +60,12 @@ public:
 
 private:
     Disk *disk;
+    fs_bitmap bitmap;
 
     void inode_load(int inumber, class fs_inode *inode);
     void inode_save(int inumber, class fs_inode *inode);
     void inode_format(class fs_inode *inode);
+    void print_bitmap(fs_bitmap *bitmap);
 };
 
 #endif

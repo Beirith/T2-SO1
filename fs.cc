@@ -1,4 +1,5 @@
 #include "fs.h"
+#include <vector>
 
 // Ok
 int INE5412_FS::fs_format()
@@ -9,7 +10,8 @@ int INE5412_FS::fs_format()
 	disk->read(0, block.data);
 
 	// Verifica se o sistema de arquivos está montado
-	if (block.super.magic == FS_MAGIC)
+	// AJUSTADO PARA FINS DE TESTE, ALTERAR PARA: block.super.magic == FS_MAGIC
+	if (block.super.magic != FS_MAGIC)
 	{
 		return 0;
 	}
@@ -103,12 +105,73 @@ void INE5412_FS::fs_debug()
 	}
 }
 
+// Mais ou menos Ok
 int INE5412_FS::fs_mount()
 {
+	union fs_block block;
+	fs_bitmap bitmap;
+	fs_inode inode;
+	int direct;
+	int indirect;
+	int pointers;
 
-	return 0;
+	disk->read(0, block.data);
+
+	// Verifica se o sistema de arquivos não está montado
+	if (block.super.magic != FS_MAGIC)
+	{
+		return 0;
+	}
+
+	bitmap.free_blocks = std::vector<bool>(block.super.nblocks, false);
+	bitmap.free_blocks[0] = true;
+
+	for (int i = 0; i < block.super.ninodeblocks; i++) 
+	{
+		for (int j = 0; j < INODES_PER_BLOCK; j++)
+		{
+			disk->read(i + 1, block.data);
+			inode = block.inode[j];
+
+			if (inode.isvalid)
+			{
+				bitmap.free_blocks[i * INODES_PER_BLOCK + j] = true;
+
+				for (int k = 0; k < POINTERS_PER_INODE; k++)
+				{
+					direct = inode.direct[k];
+					if (direct != 0)
+					{
+						bitmap.free_blocks[direct] = true;
+						cout << " " << direct;
+					}
+				}
+				cout << "\n";
+
+				indirect = inode.indirect;
+				if (indirect != 0)
+				{
+					bitmap.free_blocks[indirect] = true;
+
+					disk->read(indirect, block.data);
+					for (int k = 0; k < POINTERS_PER_BLOCK; k++)
+					{
+						pointers = block.pointers[k];
+						if (pointers != 0)
+						{
+							bitmap.free_blocks[pointers] = true;
+						}
+					}
+				}
+			}
+		}
+	}
+	print_bitmap(&bitmap);
+
+	return 1;
 }
 
+// Próximo
 int INE5412_FS::fs_create()
 {
 	return 0;
@@ -153,4 +216,14 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 	{
 		inode->direct[k] = 0;
 	}
+}
+
+// Fins de teste
+void INE5412_FS::print_bitmap(fs_bitmap *bitmap)
+{
+	for (int i = 0; i < bitmap->free_blocks.size(); i++)
+	{
+		cout << bitmap->free_blocks[i] << " ";
+	}
+	cout << "\n";
 }
