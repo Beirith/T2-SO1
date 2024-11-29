@@ -1,15 +1,43 @@
 #include "fs.h"
-#include <cstring>
 
+// Ok
 int INE5412_FS::fs_format()
 {
-	return 0;
+	union fs_block block;
+	fs_inode *inode;
+
+	disk->read(0, block.data);
+
+	// Verifica se o sistema de arquivos está montado
+	if (block.super.magic == FS_MAGIC)
+	{
+		return 0;
+	}
+
+	// Seta e escreve os valores do superbloco
+	block.super.magic = FS_MAGIC;
+	block.super.nblocks = disk->size();
+	block.super.ninodeblocks = (disk->size() + 9) / 10;
+	block.super.ninodes = block.super.ninodeblocks * INODES_PER_BLOCK;
+
+	disk->write(0, block.data);
+
+	// Formata todos os inodes de todos os blocos de inode
+    for (int i = 1; i <= block.super.ninodeblocks; ++i) {
+        for (int j = 0; j < INODES_PER_BLOCK; ++j) {
+			inode = &block.inode[j];
+			inode_format(inode);
+        }
+
+        disk->write(i, block.data);
+    }
+
+    return 1;                
 }
 
 // Ok
 void INE5412_FS::fs_debug()
 {
-	// Variáveis auxiliares
 	union fs_block block;
 	fs_inode inode;
 	int direct;
@@ -77,6 +105,7 @@ void INE5412_FS::fs_debug()
 
 int INE5412_FS::fs_mount()
 {
+
 	return 0;
 }
 
@@ -113,4 +142,15 @@ void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 void INE5412_FS::inode_save(int inumber, class fs_inode *inode)
 {
 	cout << "Inode Save";
-} 
+}
+
+void INE5412_FS::inode_format(class fs_inode *inode)
+{
+	inode->isvalid = 0;
+	inode->size = 0;
+	inode->indirect = 0;
+	for (int k = 0; k < POINTERS_PER_INODE; ++k) 
+	{
+		inode->direct[k] = 0;
+	}
+}
