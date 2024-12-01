@@ -8,7 +8,7 @@ class INE5412_FS
 {
 public:
     static const unsigned int FS_MAGIC = 0xf0f03410;
-    static const unsigned short int INODES_PER_BLOCK = 4;
+    static const unsigned short int INODES_PER_BLOCK = 128;
     static const unsigned short int POINTERS_PER_INODE = 5;
     static const unsigned short int POINTERS_PER_BLOCK = 1024;
 

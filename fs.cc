@@ -71,7 +71,7 @@ void INE5412_FS::fs_debug()
 
 			if (inode.isvalid)
 			{
-				cout << "inode " << i * INODES_PER_BLOCK + j << ":\n";
+				cout << "inode " << i * INODES_PER_BLOCK + j + 1 << ":\n";
 				cout << "    size: " << inode.size << " bytes\n";
 
 				cout << "    direct blocks:";
@@ -207,10 +207,40 @@ int INE5412_FS::fs_create()
 	return 0;
 }
 
+// Ok
 int INE5412_FS::fs_delete(int inumber)
 {
-	print_bitmap(20);
-	return 0;
+	union fs_block block;
+
+	disk->read(0, block.data);
+	int ninodeblocks = block.super.ninodeblocks;
+	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
+
+	if (inumber < 1 or inumber > max_inumber)
+	{
+		cout << "ERROR: invalid inode number!\n";
+		cout << "inode number must be between 1 and " << max_inumber << "\n";
+		return 0;
+	}
+
+	fs_inode *inode;
+	int block_number = (inumber / INODES_PER_BLOCK) + 1;
+	int inode_number = (inumber % INODES_PER_BLOCK) - 1;
+
+	disk->read(block_number, block.data);
+
+	inode = &block.inode[inode_number];
+
+	if (!inode->isvalid)
+	{
+		cout << "ERROR: inode is not valid!\n";
+		return 0;
+	}
+
+	inode_format(inode);
+	disk->write(block_number, block.data);
+
+	return 1;
 }
 
 int INE5412_FS::fs_getsize(int inumber)
@@ -231,14 +261,13 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 // Funções auxiliares
 void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 {
-	// for (int i = 0; i < INODES_PER_BLOCK; i++)
-	// {
-	// 	if (i == inumber % INODES_PER_BLOCK)
-	// 	{
-	// 		disk->read((inumber / INODES_PER_BLOCK) + 1, inode);
-	// 		return;
-	// 	}
-	// }
+	union fs_block block;
+	int block_number = (inumber / INODES_PER_BLOCK) + 1;
+	int inode_number = inumber % INODES_PER_BLOCK;
+
+	disk->read(block_number, block.data);
+
+	block.inode[inode_number] = *inode;
 }
 
 void INE5412_FS::inode_save(int inumber, class fs_inode *inode)
@@ -260,7 +289,7 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 	}
 }
 
-// Fins de teste
+// Funções de teste
 void INE5412_FS::print_bitmap(int nblocks)
 {
 	cout << "bitmap: ";
