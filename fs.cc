@@ -6,13 +6,15 @@ int INE5412_FS::fs_format()
 {
 	union fs_block block;
 	fs_inode *inode;
+	int ninodeblocks;
 
 	disk->read(0, block.data);
+	ninodeblocks = block.super.ninodeblocks;
 
 	// Verifica se o sistema de arquivos está montado
-	// AJUSTADO PARA FINS DE TESTE, ALTERAR PARA: block.super.magic == FS_MAGIC
-	if (block.super.magic != FS_MAGIC)
+	if (mounted)
 	{
+		cout << "ERROR: filesystem is already mounted!\n";
 		return 0;
 	}
 
@@ -25,7 +27,7 @@ int INE5412_FS::fs_format()
 	disk->write(0, block.data);
 
 	// Formata todos os inodes de todos os blocos de inode
-    for (int i = 1; i <= block.super.ninodeblocks; ++i) {
+    for (int i = 1; i <= ninodeblocks; ++i) {
         for (int j = 0; j < INODES_PER_BLOCK; ++j) {
 			inode = &block.inode[j];
 			inode_format(inode);
@@ -48,6 +50,7 @@ void INE5412_FS::fs_debug()
 
 	// Inicialmente, lê o Superbloco (bloco 0) e exibe suas respectivas informações
 	disk->read(0, block.data);
+	int ninodeblocks = block.super.ninodeblocks;
 
 	cout << "superblock:\n";
 	cout << "    " << (block.super.magic == FS_MAGIC ? "magic number is valid\n" : "magic number is invalid!\n");
@@ -56,7 +59,7 @@ void INE5412_FS::fs_debug()
 	cout << "    " << block.super.ninodes << " inodes\n";
 
 	// Em seguida, lê os blocos de Inode
-	for (int i = 0; i < block.super.ninodeblocks; i++) 
+	for (int i = 0; i < ninodeblocks; i++) 
 	{
 		for (int j = 0; j < INODES_PER_BLOCK; j++)
 		{
@@ -105,29 +108,27 @@ void INE5412_FS::fs_debug()
 	}
 }
 
-// Mais ou menos Ok
+// Ok
 int INE5412_FS::fs_mount()
 {
 	union fs_block block;
-	fs_bitmap bitmap;
 	fs_inode inode;
+	int ninodeblocks;
 	int direct;
 	int indirect;
 	int pointers;
+	int nblocks;
 
 	disk->read(0, block.data);
-
-	// Verifica se o sistema de arquivos não está montado
-	if (block.super.magic != FS_MAGIC)
-	{
-		return 0;
-	}
+	ninodeblocks = block.super.ninodeblocks;
+	nblocks = block.super.nblocks;
 
 	bitmap.free_blocks = std::vector<bool>(block.super.nblocks, false);
 	bitmap.free_blocks[0] = true;
 
-	for (int i = 0; i < block.super.ninodeblocks; i++) 
+	for (int i = 0; i < ninodeblocks; i++) 
 	{
+		bitmap.free_blocks[i + 1] = true;
 		for (int j = 0; j < INODES_PER_BLOCK; j++)
 		{
 			disk->read(i + 1, block.data);
@@ -135,18 +136,14 @@ int INE5412_FS::fs_mount()
 
 			if (inode.isvalid)
 			{
-				bitmap.free_blocks[i * INODES_PER_BLOCK + j] = true;
-
 				for (int k = 0; k < POINTERS_PER_INODE; k++)
 				{
 					direct = inode.direct[k];
 					if (direct != 0)
 					{
 						bitmap.free_blocks[direct] = true;
-						cout << " " << direct;
 					}
 				}
-				cout << "\n";
 
 				indirect = inode.indirect;
 				if (indirect != 0)
@@ -166,19 +163,53 @@ int INE5412_FS::fs_mount()
 			}
 		}
 	}
-	print_bitmap(&bitmap);
+	mounted = true;
+	print_bitmap(nblocks);
 
 	return 1;
 }
 
-// Próximo
+// Ok
 int INE5412_FS::fs_create()
 {
+	union fs_block block;
+	fs_inode inode;
+	int ninodeblocks;
+
+	disk->read(0, block.data);
+	ninodeblocks = block.super.ninodeblocks;
+
+	for (int i = 0; i < ninodeblocks; i++)
+	{
+		disk->read(i + 1, block.data);
+		cout << "inode block: " << i + 1 << "\n";
+		for (int j = 0; j < INODES_PER_BLOCK; j++) 
+		{
+			inode = block.inode[j];
+			if (!inode.isvalid)
+			{
+				inode.isvalid = 1;
+				inode.size = 0;
+				inode.indirect = 0;
+				for (int k = 0; k < POINTERS_PER_INODE; k++)
+				{
+					inode.direct[k] = 0;
+				}
+
+				block.inode[j] = inode;
+				disk->write(i + 1, block.data);
+				return (i * INODES_PER_BLOCK + j) + 1;
+			}
+		}
+	}
+
+	cout << "ERROR: no free inodes available!\n";
 	return 0;
 }
 
 int INE5412_FS::fs_delete(int inumber)
 {
+	print_bitmap(20);
 	return 0;
 }
 
@@ -197,14 +228,25 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 	return 0;
 }
 
+// Funções auxiliares
 void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 {
-	cout << "Inode Load";
+	// for (int i = 0; i < INODES_PER_BLOCK; i++)
+	// {
+	// 	if (i == inumber % INODES_PER_BLOCK)
+	// 	{
+	// 		disk->read((inumber / INODES_PER_BLOCK) + 1, inode);
+	// 		return;
+	// 	}
+	// }
 }
 
 void INE5412_FS::inode_save(int inumber, class fs_inode *inode)
 {
-	cout << "Inode Save";
+	// union fs_block block;
+	// disk->read((inumber / INODES_PER_BLOCK) + 1, block.data);
+	// block.inode[inumber % INODES_PER_BLOCK] = *inode;
+	// disk->write((inumber / INODES_PER_BLOCK) + 1, block.data);
 }
 
 void INE5412_FS::inode_format(class fs_inode *inode)
@@ -219,11 +261,12 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 }
 
 // Fins de teste
-void INE5412_FS::print_bitmap(fs_bitmap *bitmap)
+void INE5412_FS::print_bitmap(int nblocks)
 {
-	for (int i = 0; i < bitmap->free_blocks.size(); i++)
+	cout << "bitmap: ";
+	for (int i = 0; i < nblocks; i++)
 	{
-		cout << bitmap->free_blocks[i] << " ";
+		cout << bitmap.free_blocks[i] << " ";
 	}
 	cout << "\n";
 }

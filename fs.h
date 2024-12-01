@@ -8,9 +8,18 @@ class INE5412_FS
 {
 public:
     static const unsigned int FS_MAGIC = 0xf0f03410;
-    static const unsigned short int INODES_PER_BLOCK = 128;
+    static const unsigned short int INODES_PER_BLOCK = 4;
     static const unsigned short int POINTERS_PER_INODE = 5;
     static const unsigned short int POINTERS_PER_BLOCK = 1024;
+
+    class aux {
+        public:
+            int ninodeblocks;
+            int ninodes;
+            int direct;
+            int indirect;
+            int pointers;
+    };
 
     class fs_bitmap {
         public:
@@ -45,6 +54,7 @@ public:
 
     INE5412_FS(Disk *d) {
         disk = d;
+        mounted = false;
     } 
 
     void fs_debug();
@@ -60,12 +70,13 @@ public:
 
 private:
     Disk *disk;
+    bool mounted;
     fs_bitmap bitmap;
 
     void inode_load(int inumber, class fs_inode *inode);
     void inode_save(int inumber, class fs_inode *inode);
     void inode_format(class fs_inode *inode);
-    void print_bitmap(fs_bitmap *bitmap);
+    void print_bitmap(int nblocks);
 };
 
 #endif
