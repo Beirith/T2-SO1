@@ -77,6 +77,7 @@ private:
     void inode_save(int inumber, class fs_inode *inode);
     void inode_format(class fs_inode *inode);
     void print_bitmap(int nblocks);
+    void fs_test();
 };
 
 #endif
