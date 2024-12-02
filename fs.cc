@@ -213,10 +213,10 @@ int INE5412_FS::fs_delete(int inumber)
 	union fs_block block;
 
 	disk->read(0, block.data);
-	
+
 	int ninodeblocks = block.super.ninodeblocks;
 	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
-	int adjusted_inumber = inumber - 1; 
+	int adjusted_inumber = inumber - 1;
 
 	if (inumber < 1 or inumber > max_inumber)
 	{
@@ -225,24 +225,26 @@ int INE5412_FS::fs_delete(int inumber)
 		return 0;
 	}
 
-	fs_inode *inode;
-	int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
-	int inode_number = adjusted_inumber  %  INODES_PER_BLOCK;
+	fs_inode inode;
+	inode_load(adjusted_inumber, &inode);
 
-	disk->read(block_number, block.data);
-
-	inode = &block.inode[inode_number];
-
-	if (!inode->isvalid)
+	if (!inode.isvalid)
 	{
 		cout << "ERROR: inode is not valid!\n";
 		return 0;
 	}
 
-	inode_format(inode);
+	int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
+	int inode_number = adjusted_inumber % INODES_PER_BLOCK;
+
+	disk->read(block_number, block.data);
+
+	inode_format(&inode);
+	block.inode[inode_number] = inode;
+
 	disk->write(block_number, block.data);
 
-	return 1;
+    return 1;
 }
 
 int INE5412_FS::fs_getsize(int inumber)
@@ -261,6 +263,7 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 }
 
 // Funções auxiliares
+// Passar o bloco como parâmetro
 void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 {
 	union fs_block block;
