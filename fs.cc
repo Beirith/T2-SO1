@@ -172,6 +172,12 @@ int INE5412_FS::fs_mount()
 // Ok
 int INE5412_FS::fs_create()
 {
+	if (!mounted)
+	{
+		cout << "ERROR: filesystem is not mounted!\n";
+		return 0;
+	}
+
 	union fs_block block;
 	fs_inode inode;
 	int ninodeblocks;
@@ -210,6 +216,12 @@ int INE5412_FS::fs_create()
 // Ok
 int INE5412_FS::fs_delete(int inumber)
 {
+	if (!mounted)
+	{
+		cout << "ERROR: filesystem is not mounted!\n";
+		return 0;
+	}
+
 	union fs_block block;
 
 	disk->read(0, block.data);
@@ -271,6 +283,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
+	std::cout << "ERROR: Invalid inode number or inode is not valid.\n" << std::flush;
 	return 0;
 }
 
@@ -300,11 +313,19 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 	inode->isvalid = 0;
 	inode->size = 0;
 	inode->indirect = 0;
-	bitmap.free_blocks[inode->indirect] = false;
-	for (int k = 0; k < POINTERS_PER_INODE; ++k) 
+
+	if (mounted)
+	{
+		bitmap.free_blocks[inode->indirect] = false;
+	}
+	
+	for (int k = 0; k < POINTERS_PER_INODE; k++) 
 	{
 		inode->direct[k] = 0;
-		bitmap.free_blocks[inode->direct[k]] = false;
+		if (mounted)
+		{
+			bitmap.free_blocks[inode->direct[k]] = false;
+		}
 	}
 }
 
