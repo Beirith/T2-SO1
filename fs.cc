@@ -247,8 +247,20 @@ int INE5412_FS::fs_delete(int inumber)
     return 1;
 }
 
+// Ok
 int INE5412_FS::fs_getsize(int inumber)
 {
+	fs_inode inode;
+
+	int adjusted_inumber = inumber - 1;
+	inode_load(adjusted_inumber, &inode);
+
+	if (inode.isvalid)
+	{
+		return inode.size;
+	}
+	
+	cout << "ERROR: inode is not valid!\n";
 	return -1;
 }
 
@@ -288,9 +300,11 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 	inode->isvalid = 0;
 	inode->size = 0;
 	inode->indirect = 0;
+	bitmap.free_blocks[inode->indirect] = false;
 	for (int k = 0; k < POINTERS_PER_INODE; ++k) 
 	{
 		inode->direct[k] = 0;
+		bitmap.free_blocks[inode->direct[k]] = false;
 	}
 }
 
@@ -303,4 +317,14 @@ void INE5412_FS::print_bitmap(int nblocks)
 		cout << bitmap.free_blocks[i] << " ";
 	}
 	cout << "\n";
+}
+
+void INE5412_FS::fs_test()
+{
+	fs_format();
+	fs_mount();
+	fs_create();
+	fs_debug();
+	fs_delete(1);
+	fs_debug();
 }
