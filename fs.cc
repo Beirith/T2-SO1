@@ -182,7 +182,7 @@ int INE5412_FS::fs_create()
 	for (int i = 0; i < ninodeblocks; i++)
 	{
 		disk->read(i + 1, block.data);
-		cout << "inode block: " << i + 1 << "\n";
+
 		for (int j = 0; j < INODES_PER_BLOCK; j++) 
 		{
 			inode = block.inode[j];
@@ -213,8 +213,10 @@ int INE5412_FS::fs_delete(int inumber)
 	union fs_block block;
 
 	disk->read(0, block.data);
+	
 	int ninodeblocks = block.super.ninodeblocks;
 	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
+	int adjusted_inumber = inumber - 1; 
 
 	if (inumber < 1 or inumber > max_inumber)
 	{
@@ -224,8 +226,8 @@ int INE5412_FS::fs_delete(int inumber)
 	}
 
 	fs_inode *inode;
-	int block_number = (inumber / INODES_PER_BLOCK) + 1;
-	int inode_number = (inumber % INODES_PER_BLOCK) - 1;
+	int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
+	int inode_number = adjusted_inumber  %  INODES_PER_BLOCK;
 
 	disk->read(block_number, block.data);
 
@@ -267,7 +269,7 @@ void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 
 	disk->read(block_number, block.data);
 
-	block.inode[inode_number] = *inode;
+	*inode = block.inode[inode_number];
 }
 
 void INE5412_FS::inode_save(int inumber, class fs_inode *inode)
