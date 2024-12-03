@@ -72,6 +72,7 @@ private:
     Disk *disk;
     bool mounted;
     fs_bitmap bitmap;
+    int ninodeblocks;
 
     void inode_load(int inumber, class fs_inode *inode);
     void inode_save(int inumber, class fs_inode *inode);
