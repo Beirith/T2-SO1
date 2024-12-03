@@ -5,11 +5,8 @@
 // Ok
 int INE5412_FS::fs_format()
 {
-	union fs_block block;
-	fs_inode *inode;
-
-	disk->read(0, block.data);
-	ninodeblocks = block.super.ninodeblocks;
+	disk->read(0, current_block.data);
+	ninodeblocks = current_block.super.ninodeblocks;
 
 	// Verifica se o sistema de arquivos está montado
 	if (mounted)
@@ -19,21 +16,22 @@ int INE5412_FS::fs_format()
 	}
 
 	// Seta e escreve os valores do superbloco
-	block.super.magic = FS_MAGIC;
-	block.super.nblocks = disk->size();
-	block.super.ninodeblocks = (disk->size() + 9) / 10;
-	block.super.ninodes = block.super.ninodeblocks * INODES_PER_BLOCK;
+	current_block.super.magic = FS_MAGIC;
+	current_block.super.nblocks = disk->size();
+	current_block.super.ninodeblocks = (disk->size() + 9) / 10;
+	current_block.super.ninodes = ninodeblocks * INODES_PER_BLOCK;
 
-	disk->write(0, block.data);
+	fs_inode *inode;
+	disk->write(0, current_block.data);
 
 	// Formata todos os inodes de todos os blocos de inode
     for (int i = 1; i <= ninodeblocks; ++i) {
         for (int j = 0; j < INODES_PER_BLOCK; ++j) {
-			inode = &block.inode[j];
+			inode = &current_block.inode[j];
 			inode_format(inode);
         }
 
-        disk->write(i, block.data);
+        disk->write(i, current_block.data);
     }
 
     return 1;                
@@ -42,21 +40,20 @@ int INE5412_FS::fs_format()
 // Ok
 void INE5412_FS::fs_debug()
 {
-	union fs_block block;
 	fs_inode inode;
 	int direct;
 	int indirect;
 	int pointers;
 
 	// Inicialmente, lê o Superbloco (bloco 0) e exibe suas respectivas informações
-	disk->read(0, block.data);
-	ninodeblocks = block.super.ninodeblocks;
+	disk->read(0, current_block.data);
+	ninodeblocks = current_block.super.ninodeblocks;
 
 	cout << "superblock:\n";
-	cout << "    " << (block.super.magic == FS_MAGIC ? "magic number is valid\n" : "magic number is invalid!\n");
- 	cout << "    " << block.super.nblocks << " blocks\n";
-	cout << "    " << block.super.ninodeblocks << " inode blocks\n";
-	cout << "    " << block.super.ninodes << " inodes\n";
+	cout << "    " << (current_block.super.magic == FS_MAGIC ? "magic number is valid\n" : "magic number is invalid!\n");
+ 	cout << "    " << current_block.super.nblocks << " blocks\n";
+	cout << "    " << current_block.super.ninodeblocks << " inode blocks\n";
+	cout << "    " << current_block.super.ninodes << " inodes\n";
 
 	// Em seguida, lê os blocos de Inode
 	for (int i = 0; i < ninodeblocks; i++) 
@@ -66,8 +63,8 @@ void INE5412_FS::fs_debug()
 			// O bloco é sempre lido novamente a cada Inode percorrido,
 			// por conta da possibilidade de leitura de um bloco indireto,
 			// que irá subscrever os dados do bloco de inode em block.data
-			disk->read(i + 1, block.data);
-			inode = block.inode[j];
+			disk->read(i + 1, current_block.data);
+			inode = current_block.inode[j];
 
 			if (inode.isvalid)
 			{
@@ -92,10 +89,10 @@ void INE5412_FS::fs_debug()
 					cout << "    indirect data blocks:";
 
 					// Lê o bloco indireto e exibe seus ponteiros
-					disk->read(indirect, block.data);
+					disk->read(indirect, current_block.data);
 					for (int k = 0; k < POINTERS_PER_BLOCK; k++)
 					{
-						pointers = block.pointers[k];
+						pointers = current_block.pointers[k];
 						if (pointers != 0)
 						{
 							cout << " " << pointers;
@@ -111,18 +108,17 @@ void INE5412_FS::fs_debug()
 // Ok
 int INE5412_FS::fs_mount()
 {
-	union fs_block block;
 	fs_inode inode;
 	int direct;
 	int indirect;
 	int pointers;
 	int nblocks;
 
-	disk->read(0, block.data);
-	ninodeblocks = block.super.ninodeblocks;
-	nblocks = block.super.nblocks;
+	disk->read(0, current_block.data);
+	ninodeblocks = current_block.super.ninodeblocks;
+	nblocks = current_block.super.nblocks;
 
-	bitmap.free_blocks = std::vector<bool>(block.super.nblocks, false);
+	bitmap.free_blocks = std::vector<bool>(current_block.super.nblocks, false);
 	bitmap.free_blocks[0] = true;
 
 	for (int i = 0; i < ninodeblocks; i++) 
@@ -130,8 +126,8 @@ int INE5412_FS::fs_mount()
 		bitmap.free_blocks[i + 1] = true;
 		for (int j = 0; j < INODES_PER_BLOCK; j++)
 		{
-			disk->read(i + 1, block.data);
-			inode = block.inode[j];
+			disk->read(i + 1, current_block.data);
+			inode = current_block.inode[j];
 
 			if (inode.isvalid)
 			{
@@ -149,10 +145,10 @@ int INE5412_FS::fs_mount()
 				{
 					bitmap.free_blocks[indirect] = true;
 
-					disk->read(indirect, block.data);
+					disk->read(indirect, current_block.data);
 					for (int k = 0; k < POINTERS_PER_BLOCK; k++)
 					{
-						pointers = block.pointers[k];
+						pointers = current_block.pointers[k];
 						if (pointers != 0)
 						{
 							bitmap.free_blocks[pointers] = true;
@@ -177,18 +173,17 @@ int INE5412_FS::fs_create()
 		return 0;
 	}
 
-	union fs_block block;
 	fs_inode inode;
 
-	disk->read(0, block.data);
+	disk->read(0, current_block.data);
 
 	for (int i = 0; i < ninodeblocks; i++)
 	{
-		disk->read(i + 1, block.data);
+		disk->read(i + 1, current_block.data);
 
 		for (int j = 0; j < INODES_PER_BLOCK; j++) 
 		{
-			inode = block.inode[j];
+			inode = current_block.inode[j];
 			if (!inode.isvalid)
 			{
 				inode.isvalid = 1;
@@ -199,8 +194,8 @@ int INE5412_FS::fs_create()
 					inode.direct[k] = 0;
 				}
 
-				block.inode[j] = inode;
-				disk->write(i + 1, block.data);
+				current_block.inode[j] = inode;
+				disk->write(i + 1, current_block.data);
 				return (i * INODES_PER_BLOCK + j) + 1;
 			}
 		}
@@ -219,9 +214,7 @@ int INE5412_FS::fs_delete(int inumber)
 		return 0;
 	}
 
-	union fs_block block;
-
-	disk->read(0, block.data);
+	disk->read(0, current_block.data);
 
 	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
 	int adjusted_inumber = inumber - 1;
@@ -245,12 +238,12 @@ int INE5412_FS::fs_delete(int inumber)
 	int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
 	int inode_number = adjusted_inumber % INODES_PER_BLOCK;
 
-	disk->read(block_number, block.data);
+	disk->read(block_number, current_block.data);
 
 	inode_format(&inode);
-	block.inode[inode_number] = inode;
+	current_block.inode[inode_number] = inode;
 
-	disk->write(block_number, block.data);
+	disk->write(block_number, current_block.data);
 
     return 1;
 }
@@ -278,7 +271,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	if (!mounted)
 	{
 		cout << "ERROR: filesystem is not mounted!\n";
-		return -1;
+		return 0;
 	}
 
 	int adjusted_inumber = inumber - 1;
@@ -288,7 +281,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	{
 		cout << "ERROR: invalid inode number!\n";
 		cout << "inode number must be between 1 and " << max_inumber << "\n";
-		return -1;
+		return 0;
 	}
 
 	fs_inode inode;
@@ -297,7 +290,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	if (!inode.isvalid)
 	{
 		cout << "ERROR: inode is not valid!\n";
-		return -1;
+		return 0;
 	}
 
 	if (offset >= inode.size)
@@ -309,9 +302,9 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	union fs_block block;
 	int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
 
-	disk->read(block_number, block.data);
+	disk->read(block_number, current_block.data);
 
-	int bytes_read = 0;
+	int nbytes_read = 0;
 	int block_size = Disk::DISK_BLOCK_SIZE;
 
 	if (offset + length > inode.size)
@@ -319,12 +312,12 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		length = inode.size - offset;
 	}
 
-	int start_block = offset / block_size;
+	int starting_block = offset / block_size;
 	int block_offset = offset % block_size;
 
-	for (int i = start_block; i < POINTERS_PER_INODE; i++)
+	for (int i = starting_block; i < POINTERS_PER_INODE; i++)
 	{
-		if (bytes_read >= length)
+		if (nbytes_read >= length)
 		{
 			break;
 		}
@@ -337,20 +330,20 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		}
 
 		disk->read(current_block, block.data);
-		int chunk_size = std::min(block_size - block_offset, length - bytes_read);
-		memcpy(data + bytes_read, block.data + block_offset, chunk_size);
-		bytes_read += chunk_size;
+		int chunk_size = std::min(block_size - block_offset, length - nbytes_read);
+		memcpy(data + nbytes_read, block.data + block_offset, chunk_size);
+		nbytes_read += chunk_size;
 		block_offset = 0;
 	}
 
-	if (bytes_read < length && inode.indirect != 0)
+	if (nbytes_read < length && inode.indirect != 0)
 	{
 		union fs_block indirect_block;
 		disk->read(inode.indirect, indirect_block.data);
 
 		for (int i = 0; i < POINTERS_PER_BLOCK; ++i)
 		{
-			if (bytes_read >= length)
+			if (nbytes_read >= length)
 			{
 				break;
 			}
@@ -362,17 +355,17 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 			}
 
 			disk->read(current_block, block.data);
-			int chunk_size = std::min(block_size - block_offset, length - bytes_read);
-			memcpy(data + bytes_read, block.data + block_offset, chunk_size);
-			bytes_read += chunk_size;
+			int chunk_size = std::min(block_size - block_offset, length - nbytes_read);
+			memcpy(data + nbytes_read, block.data + block_offset, chunk_size);
+			nbytes_read += chunk_size;
 			block_offset = 0;
 		}
 	}
 
-	return bytes_read;
+	return nbytes_read;
 }
 
-
+// Falta
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
 	if (!mounted)
@@ -387,16 +380,14 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 }
 
 // Funções auxiliares
-// Passar o bloco como parâmetro
 void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 {
-	union fs_block block;
 	int block_number = (inumber / INODES_PER_BLOCK) + 1;
 	int inode_number = inumber % INODES_PER_BLOCK;
 
-	disk->read(block_number, block.data);
+	disk->read(block_number, current_block.data);
 
-	*inode = block.inode[inode_number];
+	*inode = current_block.inode[inode_number];
 }
 
 void INE5412_FS::inode_save(int inumber, class fs_inode *inode)
