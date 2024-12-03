@@ -65,10 +65,15 @@ private:
     fs_bitmap bitmap;
     bool mounted;
     int ninodeblocks;
+    int max_inumber;
 
     void inode_load(int inumber, class fs_inode *inode);
     void inode_save(int inumber, class fs_inode *inode);
     void inode_format(class fs_inode *inode);
+
+    int is_mounted();
+    int validate(fs_inode *inode, int inumber, int offset);
+
     void print_bitmap(int nblocks);
     void fs_test();
 };

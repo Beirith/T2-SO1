@@ -112,11 +112,13 @@ int INE5412_FS::fs_mount()
 	int direct;
 	int indirect;
 	int pointers;
-	int nblocks;
+	// int nblocks;
 
 	disk->read(0, current_block.data);
 	ninodeblocks = current_block.super.ninodeblocks;
-	nblocks = current_block.super.nblocks;
+	max_inumber = ninodeblocks * INODES_PER_BLOCK;
+
+	// nblocks = current_block.super.nblocks;
 
 	bitmap.free_blocks = std::vector<bool>(current_block.super.nblocks, false);
 	bitmap.free_blocks[0] = true;
@@ -159,7 +161,7 @@ int INE5412_FS::fs_mount()
 		}
 	}
 	mounted = true;
-	print_bitmap(nblocks);
+	// print_bitmap(nblocks);
 
 	return 1;
 }
@@ -167,9 +169,8 @@ int INE5412_FS::fs_mount()
 // Ok
 int INE5412_FS::fs_create()
 {
-	if (!mounted)
+	if (!is_mounted())
 	{
-		cout << "ERROR: filesystem is not mounted!\n";
 		return 0;
 	}
 
@@ -208,15 +209,12 @@ int INE5412_FS::fs_create()
 // Ok
 int INE5412_FS::fs_delete(int inumber)
 {
-	if (!mounted)
+	if (!is_mounted())
 	{
-		cout << "ERROR: filesystem is not mounted!\n";
 		return 0;
 	}
 
 	disk->read(0, current_block.data);
-
-	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
 	int adjusted_inumber = inumber - 1;
 
 	if (inumber < 1 or inumber > max_inumber)
@@ -235,15 +233,8 @@ int INE5412_FS::fs_delete(int inumber)
 		return 0;
 	}
 
-	int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
-	int inode_number = adjusted_inumber % INODES_PER_BLOCK;
-
-	disk->read(block_number, current_block.data);
-
 	inode_format(&inode);
-	current_block.inode[inode_number] = inode;
-
-	disk->write(block_number, current_block.data);
+	inode_save(adjusted_inumber, &inode);
 
     return 1;
 }
@@ -252,8 +243,8 @@ int INE5412_FS::fs_delete(int inumber)
 int INE5412_FS::fs_getsize(int inumber)
 {
 	fs_inode inode;
-
 	int adjusted_inumber = inumber - 1;
+	
 	inode_load(adjusted_inumber, &inode);
 
 	if (inode.isvalid)
@@ -268,34 +259,12 @@ int INE5412_FS::fs_getsize(int inumber)
 // Ok
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 {
-	if (!mounted)
-	{
-		cout << "ERROR: filesystem is not mounted!\n";
-		return 0;
-	}
-
-	int adjusted_inumber = inumber - 1;
-	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
-
-	if (inumber < 1 or inumber > max_inumber)
-	{
-		cout << "ERROR: invalid inode number!\n";
-		cout << "inode number must be between 1 and " << max_inumber << "\n";
-		return 0;
-	}
-
 	fs_inode inode;
+	int adjusted_inumber = inumber - 1;
 	inode_load(adjusted_inumber, &inode);
 
-	if (!inode.isvalid)
+	if (validate(&inode, inumber, offset) < 0)
 	{
-		cout << "ERROR: inode is not valid!\n";
-		return 0;
-	}
-
-	if (offset >= inode.size)
-	{
-		cout << "ERROR: offset is greater than inode size!\n";
 		return 0;
 	}
 
@@ -323,13 +292,13 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		}
 
 		int current_block = inode.direct[i];
-		
 		if (current_block == 0)
 		{
 			continue;
 		}
 
 		disk->read(current_block, block.data);
+
 		int chunk_size = std::min(block_size - block_offset, length - nbytes_read);
 		memcpy(data + nbytes_read, block.data + block_offset, chunk_size);
 		nbytes_read += chunk_size;
@@ -355,8 +324,10 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 			}
 
 			disk->read(current_block, block.data);
+
 			int chunk_size = std::min(block_size - block_offset, length - nbytes_read);
 			memcpy(data + nbytes_read, block.data + block_offset, chunk_size);
+
 			nbytes_read += chunk_size;
 			block_offset = 0;
 		}
@@ -368,13 +339,27 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 // Falta
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
-	if (!mounted)
+	fs_inode inode;
+	int adjusted_inumber = inumber - 1;
+	inode_load(adjusted_inumber, &inode);
+
+	if (validate(&inode, inumber, offset) < 0)
 	{
-		cout << "ERROR: filesystem is not mounted!\n";
 		return 0;
 	}
 
+	// union fs_block block;
+	// int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
 
+	// disk->read(block_number, current_block.data);
+
+	// int nbytes_written = 0;
+
+	// int block_size = Disk::DISK_BLOCK_SIZE;
+
+	// int starting_block = offset / block_size;
+
+	// int block_offset = offset % block_size;
 
 	return 0;
 }
@@ -392,10 +377,14 @@ void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 
 void INE5412_FS::inode_save(int inumber, class fs_inode *inode)
 {
-	// union fs_block block;
-	// disk->read((inumber / INODES_PER_BLOCK) + 1, block.data);
-	// block.inode[inumber % INODES_PER_BLOCK] = *inode;
-	// disk->write((inumber / INODES_PER_BLOCK) + 1, block.data);
+    int block_number = (inumber / INODES_PER_BLOCK) + 1;
+    int inode_number = inumber % INODES_PER_BLOCK;
+
+    disk->read(block_number, current_block.data);
+
+    current_block.inode[inode_number] = *inode;
+
+    disk->write(block_number, current_block.data);
 }
 
 void INE5412_FS::inode_format(class fs_inode *inode)
@@ -408,7 +397,7 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 	{
 		bitmap.free_blocks[inode->indirect] = false;
 	}
-	
+
 	for (int k = 0; k < POINTERS_PER_INODE; k++) 
 	{
 		inode->direct[k] = 0;
@@ -418,6 +407,61 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 		}
 	}
 }
+
+int INE5412_FS::is_mounted()
+{
+	if (mounted)
+	{
+		return 1;
+	}
+	else
+	{
+		cout << "ERROR: filesystem is not mounted!\n";
+		return 0;
+	}
+}
+
+int INE5412_FS::validate(fs_inode *inode, int inumber, int offset)
+{
+	if (!is_mounted())
+	{
+		return -1;
+	}
+
+	if (inumber < 1 or inumber > max_inumber)
+	{
+		cout << "ERROR: invalid inode number!\n";
+		cout << "inode number must be between 1 and " << max_inumber << "\n";
+		return -1;
+	}
+
+	if (!inode->isvalid)
+	{
+		cout << "ERROR: inode is not valid!\n";
+		return -1;
+	}
+
+	if (offset >= inode->size)
+	{
+		cout << "ERROR: offset is greater than inode size!\n";
+		return -1;
+	}
+
+	return 1;
+}
+
+// int INE5412_FS::get_free_block()
+// {
+// 	for (int i = 0; i < bitmap.free_blocks.size(); i++)
+// 	{
+// 		if (bitmap.free_blocks[i])
+// 		{
+// 			bitmap.free_blocks[i] = false;
+// 			return i;
+// 		}
+// 	}
+// 	return -1;
+// }
 
 // Funções de teste
 void INE5412_FS::print_bitmap(int nblocks)
