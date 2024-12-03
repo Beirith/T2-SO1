@@ -61,6 +61,7 @@ public:
 
 private:
     Disk *disk;
+    fs_block current_block;
     fs_bitmap bitmap;
     bool mounted;
     int ninodeblocks;
