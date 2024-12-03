@@ -1,12 +1,12 @@
 #include "fs.h"
 #include <vector>
+#include <cstring> 
 
 // Ok
 int INE5412_FS::fs_format()
 {
 	union fs_block block;
 	fs_inode *inode;
-	int ninodeblocks;
 
 	disk->read(0, block.data);
 	ninodeblocks = block.super.ninodeblocks;
@@ -50,7 +50,7 @@ void INE5412_FS::fs_debug()
 
 	// Inicialmente, lê o Superbloco (bloco 0) e exibe suas respectivas informações
 	disk->read(0, block.data);
-	int ninodeblocks = block.super.ninodeblocks;
+	ninodeblocks = block.super.ninodeblocks;
 
 	cout << "superblock:\n";
 	cout << "    " << (block.super.magic == FS_MAGIC ? "magic number is valid\n" : "magic number is invalid!\n");
@@ -113,7 +113,6 @@ int INE5412_FS::fs_mount()
 {
 	union fs_block block;
 	fs_inode inode;
-	int ninodeblocks;
 	int direct;
 	int indirect;
 	int pointers;
@@ -172,12 +171,16 @@ int INE5412_FS::fs_mount()
 // Ok
 int INE5412_FS::fs_create()
 {
+	if (!mounted)
+	{
+		cout << "ERROR: filesystem is not mounted!\n";
+		return 0;
+	}
+
 	union fs_block block;
 	fs_inode inode;
-	int ninodeblocks;
 
 	disk->read(0, block.data);
-	ninodeblocks = block.super.ninodeblocks;
 
 	for (int i = 0; i < ninodeblocks; i++)
 	{
@@ -210,11 +213,16 @@ int INE5412_FS::fs_create()
 // Ok
 int INE5412_FS::fs_delete(int inumber)
 {
+	if (!mounted)
+	{
+		cout << "ERROR: filesystem is not mounted!\n";
+		return 0;
+	}
+
 	union fs_block block;
 
 	disk->read(0, block.data);
 
-	int ninodeblocks = block.super.ninodeblocks;
 	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
 	int adjusted_inumber = inumber - 1;
 
@@ -264,13 +272,117 @@ int INE5412_FS::fs_getsize(int inumber)
 	return -1;
 }
 
+// Ok
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 {
-	return 0;
+	if (!mounted)
+	{
+		cout << "ERROR: filesystem is not mounted!\n";
+		return -1;
+	}
+
+	int adjusted_inumber = inumber - 1;
+	int max_inumber = ninodeblocks * INODES_PER_BLOCK;
+
+	if (inumber < 1 or inumber > max_inumber)
+	{
+		cout << "ERROR: invalid inode number!\n";
+		cout << "inode number must be between 1 and " << max_inumber << "\n";
+		return -1;
+	}
+
+	fs_inode inode;
+	inode_load(adjusted_inumber, &inode);
+
+	if (!inode.isvalid)
+	{
+		cout << "ERROR: inode is not valid!\n";
+		return -1;
+	}
+
+	if (offset >= inode.size)
+	{
+		cout << "ERROR: offset is greater than inode size!\n";
+		return 0;
+	}
+
+	union fs_block block;
+	int block_number = (adjusted_inumber / INODES_PER_BLOCK) + 1;
+
+	disk->read(block_number, block.data);
+
+	int bytes_read = 0;
+	int block_size = Disk::DISK_BLOCK_SIZE;
+
+	if (offset + length > inode.size)
+	{
+		length = inode.size - offset;
+	}
+
+	int start_block = offset / block_size;
+	int block_offset = offset % block_size;
+
+	for (int i = start_block; i < POINTERS_PER_INODE; i++)
+	{
+		if (bytes_read >= length)
+		{
+			break;
+		}
+
+		int current_block = inode.direct[i];
+		
+		if (current_block == 0)
+		{
+			continue;
+		}
+
+		disk->read(current_block, block.data);
+		int chunk_size = std::min(block_size - block_offset, length - bytes_read);
+		memcpy(data + bytes_read, block.data + block_offset, chunk_size);
+		bytes_read += chunk_size;
+		block_offset = 0;
+	}
+
+	if (bytes_read < length && inode.indirect != 0)
+	{
+		union fs_block indirect_block;
+		disk->read(inode.indirect, indirect_block.data);
+
+		for (int i = 0; i < POINTERS_PER_BLOCK; ++i)
+		{
+			if (bytes_read >= length)
+			{
+				break;
+			}
+
+			int current_block = indirect_block.pointers[i];
+			if (current_block == 0)
+			{
+				continue;
+			}
+
+			disk->read(current_block, block.data);
+			int chunk_size = std::min(block_size - block_offset, length - bytes_read);
+			memcpy(data + bytes_read, block.data + block_offset, chunk_size);
+			bytes_read += chunk_size;
+			block_offset = 0;
+		}
+	}
+
+	return bytes_read;
 }
+
 
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
+	if (!mounted)
+	{
+		cout << "ERROR: filesystem is not mounted!\n";
+		return 0;
+	}
+
+
+
 	return 0;
 }
 
@@ -300,11 +412,19 @@ void INE5412_FS::inode_format(class fs_inode *inode)
 	inode->isvalid = 0;
 	inode->size = 0;
 	inode->indirect = 0;
-	bitmap.free_blocks[inode->indirect] = false;
-	for (int k = 0; k < POINTERS_PER_INODE; ++k) 
+
+	if (mounted)
+	{
+		bitmap.free_blocks[inode->indirect] = false;
+	}
+	
+	for (int k = 0; k < POINTERS_PER_INODE; k++) 
 	{
 		inode->direct[k] = 0;
-		bitmap.free_blocks[inode->direct[k]] = false;
+		if (mounted)
+		{
+			bitmap.free_blocks[inode->direct[k]] = false;
+		}
 	}
 }
 
