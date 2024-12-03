@@ -12,15 +12,6 @@ public:
     static const unsigned short int POINTERS_PER_INODE = 5;
     static const unsigned short int POINTERS_PER_BLOCK = 1024;
 
-    // class aux {
-    //     public:
-    //         int ninodeblocks;
-    //         int ninodes;
-    //         int direct;
-    //         int indirect;
-    //         int pointers;
-    // };
-
     class fs_bitmap {
         public:
             std::vector<bool> free_blocks;
@@ -70,8 +61,8 @@ public:
 
 private:
     Disk *disk;
-    bool mounted;
     fs_bitmap bitmap;
+    bool mounted;
     int ninodeblocks;
 
     void inode_load(int inumber, class fs_inode *inode);

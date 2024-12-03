@@ -278,7 +278,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	if (!mounted)
 	{
 		cout << "ERROR: filesystem is not mounted!\n";
-		return -1;
+		return 0;
 	}
 
 	int adjusted_inumber = inumber - 1;
@@ -288,7 +288,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	{
 		cout << "ERROR: invalid inode number!\n";
 		cout << "inode number must be between 1 and " << max_inumber << "\n";
-		return -1;
+		return 0;
 	}
 
 	fs_inode inode;
@@ -297,7 +297,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 	if (!inode.isvalid)
 	{
 		cout << "ERROR: inode is not valid!\n";
-		return -1;
+		return 0;
 	}
 
 	if (offset >= inode.size)
@@ -311,7 +311,7 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 
 	disk->read(block_number, block.data);
 
-	int bytes_read = 0;
+	int nbytes_read = 0;
 	int block_size = Disk::DISK_BLOCK_SIZE;
 
 	if (offset + length > inode.size)
@@ -319,12 +319,12 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		length = inode.size - offset;
 	}
 
-	int start_block = offset / block_size;
+	int starting_block = offset / block_size;
 	int block_offset = offset % block_size;
 
-	for (int i = start_block; i < POINTERS_PER_INODE; i++)
+	for (int i = starting_block; i < POINTERS_PER_INODE; i++)
 	{
-		if (bytes_read >= length)
+		if (nbytes_read >= length)
 		{
 			break;
 		}
@@ -337,20 +337,20 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 		}
 
 		disk->read(current_block, block.data);
-		int chunk_size = std::min(block_size - block_offset, length - bytes_read);
-		memcpy(data + bytes_read, block.data + block_offset, chunk_size);
-		bytes_read += chunk_size;
+		int chunk_size = std::min(block_size - block_offset, length - nbytes_read);
+		memcpy(data + nbytes_read, block.data + block_offset, chunk_size);
+		nbytes_read += chunk_size;
 		block_offset = 0;
 	}
 
-	if (bytes_read < length && inode.indirect != 0)
+	if (nbytes_read < length && inode.indirect != 0)
 	{
 		union fs_block indirect_block;
 		disk->read(inode.indirect, indirect_block.data);
 
 		for (int i = 0; i < POINTERS_PER_BLOCK; ++i)
 		{
-			if (bytes_read >= length)
+			if (nbytes_read >= length)
 			{
 				break;
 			}
@@ -362,17 +362,17 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 			}
 
 			disk->read(current_block, block.data);
-			int chunk_size = std::min(block_size - block_offset, length - bytes_read);
-			memcpy(data + bytes_read, block.data + block_offset, chunk_size);
-			bytes_read += chunk_size;
+			int chunk_size = std::min(block_size - block_offset, length - nbytes_read);
+			memcpy(data + nbytes_read, block.data + block_offset, chunk_size);
+			nbytes_read += chunk_size;
 			block_offset = 0;
 		}
 	}
 
-	return bytes_read;
+	return nbytes_read;
 }
 
-
+// Falta
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
 	if (!mounted)
@@ -387,7 +387,6 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 }
 
 // Funções auxiliares
-// Passar o bloco como parâmetro
 void INE5412_FS::inode_load(int inumber, class fs_inode *inode)
 {
 	union fs_block block;
