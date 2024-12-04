@@ -64,6 +64,7 @@ private:
     fs_block current_block;
     fs_bitmap bitmap;
     bool mounted;
+    int nblocks;
     int ninodeblocks;
     int max_inumber;
 
@@ -73,9 +74,8 @@ private:
 
     int is_mounted();
     int validate(fs_inode *inode, int inumber, int offset);
-
-    void print_bitmap(int nblocks);
-    void fs_test();
+    int get_free_block();
+    void print_bitmap();
 };
 
 #endif
